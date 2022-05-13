@@ -1,10 +1,10 @@
 import re
-import MDAnalysis as mda
-import pymatgen.core
 import datetime
-import h5py
 import warnings
 import sys
+import MDAnalysis as mda
+import pymatgen.core
+import h5py
 
 sys.path.append("/home/kwibus/PycharmProjects/Optimade/optimade-python-tools/")
 from optimade.server.config import CONFIG
@@ -16,16 +16,34 @@ from optimade.server.mappers import TrajectoryMapper, ReferenceMapper
 
 
 def load_trajectory_data(
-        structure_file,
-        trajectory_files=None,
-        references=None,
-        first_frame=0,
-        last_frame=None,
-        storage_dir=None,
-        frame_step=1,
-        id=None,
-        reference_frame=0,
+    structure_file: str,
+    trajectory_files: list[str] = None,
+    references: list[dict] = None,
+    first_frame: int = 0,
+    last_frame: int = None,
+    storage_dir: str = None,
+    frame_step: int = 1,
+    traj_id: str = None,
+    reference_frame: int = 0,
 ):
+    """This function loads a trajectory file with MDAnalysis library and Extracts the OPTIMADE fields and stores it in mongoDB.
+
+    arguments: structure_file: A file containing the structural information about the compounds in the trajectory.
+                               If there is no separate trajectory file it can also contain trajectory information.
+               trajectory_files: a list of files containing the trajectory.
+               references: A list of dictionaries containing references belonging to this trajectory.
+                           Valid fields are all the fields defined by the bibtech standard.
+                           Each referene should have an id field(string) that is unique within the database.
+               (warning: The slicing parameter first_frame, frame_step and last_frame have not tested this slicing properly yet.)
+               first_frame: In case only a part of the trajectory should be used this indicates the first frame that should be stored in the data base.
+               frame_step: Only 1 out of every frame step will be stored on the server.
+               last_frame: The last frame which should be stored in the database.
+               traj_id : An id for this trajectory that is unique within the database. If no id is provided the id from mongo DB will be used.
+               reference_frame: This indicates which frame will be used to generate the reference structure.
+
+    """
+
+    # TODO test whether frame step parameters are handled correctly.
     # step 1: load file(s) with trajectory data
     # TODO It is probably better to use paths from the Path library instead of strings for the filenames
     # TODO Determine whether the file is small enough to store in memory in that case set "in_memory=True"
@@ -35,6 +53,7 @@ def load_trajectory_data(
         traj = mda.Universe(structure_file)
 
     # Step2 generate pymatgen structure from MDAnalysis structure so we can also use the methods of pymatgen
+    reference_frame = reference_frame + first_frame
     struct = generate_pymatgen_from_mdtraj(traj, reference_frame)
 
     # step 3: generate all the neccesary OPTIMADE fields from the data
@@ -42,14 +61,11 @@ def load_trajectory_data(
 
     if not last_frame:
         last_frame = len(traj.trajectory)
-    n_frames = 1 + (((last_frame-1) - first_frame) // frame_step)
+    n_frames = 1 + (((last_frame - 1) - first_frame) // frame_step)
 
     # TODO it would be nice to also allow adding structures in the same way we add trajectories
     # type
-    #if n_frames > 1:
-    type = "trajectories"
-    #else:
-    #    type = "structures"
+    entry_type = "trajectories"
 
     # immutable_id (OPTIONAL)
     # last_modified handled by the function current_time()
@@ -109,7 +125,7 @@ def load_trajectory_data(
                 "chemical_symbols": [traj.atoms.elements[index]],
                 "concentration": [getoccu(traj, index)],
                 "mass": [traj.atoms.masses[index]],
-                "_biomol_atom_name": specie
+                "_biomol_atom_name": specie,
             }
         )
 
@@ -170,9 +186,9 @@ def load_trajectory_data(
     entry = {
         "reference_structure": reference_structure,
         "nframes": n_frames,
-        "reference_frame": reference_frame,
+        "reference_frame": reference_frame-first_frame,
         "available_properties": available_properties,
-        "type": type,
+        "type": entry_type,
         "last_modified": last_modified(),
         "cartesian_site_positions": {
             "frame_serialization_format": "explicit",
@@ -214,12 +230,13 @@ def load_trajectory_data(
 
     # Generate biomolecular fields:
 
-    if hasattr(traj.residues, "icodes"): # TODO need a more thorough way to determine if it is a biomolecular simulation.
+    if hasattr(
+        traj.residues, "icodes"
+    ):  # TODO need a more thorough way to determine if it is a biomolecular simulation.
         sequences, residues, chains = get_biomol_fields(traj)
         entry["sequences"] = sequences
         entry["residues"] = residues
         entry["chains"] = chains
-
 
     # Step 4: store trajectory data
 
@@ -229,19 +246,21 @@ def load_trajectory_data(
         resource_mapper=TrajectoryMapper,
     )
     mongoid = trajectories_coll.insert([entry]).inserted_ids[0]
-    if not id:
-        id = str(mongoid)
-    fields_to_add = {"id": id}
+    if not traj_id:
+        traj_id = str(mongoid)
+    fields_to_add = {"id": traj_id}
 
-    if (type == "trajectories"):
+    if entry_type == "trajectories":
         # Write trajectory data in HDF5 format
-        if n_frames * nsites * 3 * 4 > 16 * 1024:  # If the trajectory is larger than about 16 kb store it in hdf5 file
-            hdf5path = storage_dir + id + ".hdf5"
+        if (
+            n_frames * nsites * 3 * 4 > 16 * 1024
+        ):  # If the trajectory is larger than about 16 kb store it in hdf5 file
+            hdf5path = storage_dir + traj_id + ".hdf5"
             fields_to_add["_hdf5file_path"] = hdf5path
 
             # TODO It would be better to use a try and except around storing the data. If writing the data to the hdf5 file failes the corresponding entry should be removed from the mongo DB.
             with h5py.File(hdf5path, "w") as hdf5file:
-                #TODO It would be nice as we could store all the trajectory data in the HDF5 file So we should still add the storing of the other relevant trajectory info here as well.
+                # TODO It would be nice as we could store all the trajectory data in the HDF5 file So we should still add the storing of the other relevant trajectory info here as well.
 
                 if traj.trajectory[
                     reference_frame
@@ -252,56 +271,71 @@ def load_trajectory_data(
                         chunks=True,
                         dtype=traj.trajectory[0].positions[0][0].dtype,
                     )  # TODO allow for varying number of particles
-                    for i in range(first_frame, last_frame,
-                                   frame_step):  # TODO offer the option to place only a part of the frames in the database
-                        arr[(i - first_frame) // frame_step] = traj.trajectory[i].positions
+                    for i in range(
+                        first_frame, last_frame, frame_step
+                    ):  # TODO offer the option to place only a part of the frames in the database
+                        arr[(i - first_frame) // frame_step] = traj.trajectory[
+                            i
+                        ].positions
 
         else:  # If the trajectory is small it can be stored locally
             positions = []
 
-            if "F" in elements:  # To cover all the different cases for testing I encode the information about the trajectory in a different ways here.
+            # To cover all the different cases for testing I encode the information about the trajectory in a different ways here.
+            if "F" in elements:
                 import random
+
                 frames = []
                 for i in range(n_frames):
                     if random.randrange(0, 10) >= 5:
                         frames.append(i)
                         positions.append(traj.trajectory[i].positions.tolist())
-                fields_to_add.update({"available_properties.cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
-                    "available_properties.cartesian_site_positions.nvalues": len(frames),
-                    "cartesian_site_positions.frames": frames,
-                    "cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
-                    "cartesian_site_positions.nvalues": len(frames)})
+                fields_to_add.update(
+                    {
+                        "available_properties.cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
+                        "available_properties.cartesian_site_positions.nvalues": len(
+                            frames
+                        ),
+                        "cartesian_site_positions.frames": frames,
+                        "cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
+                        "cartesian_site_positions.nvalues": len(frames),
+                    }
+                )
 
             elif "Br" in elements:
                 for i in range(0, n_frames, 2):
                     positions.append(traj.trajectory[i].positions.tolist())
-                fields_to_add.update({"cartesian_site_positions.step_size_sparse": 2,
-                    "cartesian_site_positions.offset_sparse": 0,
-                    "cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
-                    "cartesian_site_positions.nvalues": len(positions),
-                    "available_properties.cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
-                    "available_properties.cartesian_site_positions.nvalues": len(positions)})
+                fields_to_add.update(
+                    {
+                        "cartesian_site_positions.step_size_sparse": 2,
+                        "cartesian_site_positions.offset_sparse": 0,
+                        "cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
+                        "cartesian_site_positions.nvalues": len(positions),
+                        "available_properties.cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
+                        "available_properties.cartesian_site_positions.nvalues": len(
+                            positions
+                        ),
+                    }
+                )
 
             else:
                 for i in range(first_frame, last_frame, frame_step):
                     positions.append(traj.trajectory[i].positions.tolist())
-            fields_to_add.update({"cartesian_site_positions._storage_location": "mongo",
-                                            "cartesian_site_positions.values": positions})
-    trajectories_coll.collection.update_one(
-        {"_id": mongoid}, {"$set": fields_to_add}
-    )
+            fields_to_add.update(
+                {
+                    "cartesian_site_positions._storage_location": "mongo",
+                    "cartesian_site_positions.values": positions,
+                }
+            )
+    trajectories_coll.collection.update_one({"_id": mongoid}, {"$set": fields_to_add})
 
 
 def flip_chem_form_anon(chemical_formula_anonymous: str) -> str:
     """Converts an anonymous chemical formula with the most numerous element in the last position to an
     anonymous chemical formula with the most numerous element in the first position and vice versa."""
-    numbers = [n for n in re.split(r"[A-Z][a-z]*", chemical_formula_anonymous)]
-    anon_elem = [
-        n
-        for n in re.findall(
-            "[A-Z][^A-Z]*", re.sub("[0-9]+", "", chemical_formula_anonymous)
-        )
-    ]
+    numbers = list(re.split('[A-Z][a-z]*', chemical_formula_anonymous))
+    anon_elem = list(re.findall('[A-Z][^A-Z]*', re.sub('[0-9]+', '', chemical_formula_anonymous)))
+
     return "".join(
         [
             y
@@ -314,8 +348,7 @@ def flip_chem_form_anon(chemical_formula_anonymous: str) -> str:
 def getoccu(traj, index):
     if hasattr(traj.atoms, "occupancies"):
         return traj.atoms.occupancies[index]
-    else:
-        return 1.0
+    return 1.0
 
 
 def generate_relationships(references):
@@ -328,8 +361,9 @@ def generate_relationships(references):
     for reference in references:
         list_references.append({"type": "references", "id": reference["id"]})
         reference["last_modified"] = last_modified()
-        references_coll.insert([
-            reference])  # TODO check whether id is unique if it is already in the data base it would need a postfix if not identical.
+        references_coll.insert(
+            [reference]
+        )  # TODO check whether id is unique if it is already in the data base it would need a postfix if not identical.
 
     return {"references": {"data": list_references}}
 
@@ -351,8 +385,7 @@ def get_res_type(resname):
         return "solvent"
     if resname in IONS:
         return "ion"
-    else:
-        return "other"
+    return "other"
 
 
 def get_chain_indixes(seg_id_set, chain_id_to_index):
@@ -400,18 +433,24 @@ def generate_pymatgen_from_mdtraj(traj, frame):
     # dictstruct["charge"] = TODO MDTRAJ does not read charges from pdb files yet so we cannot implement this yet.
     sites = []
 
-    single_frame = (len(traj.trajectory) == 1)
-    if single_frame:  # somehow reading a structure as a trajectory is very slow so instead we read the positions from the atoms.
+    single_frame = len(traj.trajectory) == 1
+    if (
+        single_frame
+    ):  # somehow reading a structure as a trajectory is very slow so instead we read the positions from the atoms.
         for i in range(nsites):
             site = {
-                "species": [{"element": traj.atoms.elements[i], "occu": getoccu(traj, i)}],
+                "species": [
+                    {"element": traj.atoms.elements[i], "occu": getoccu(traj, i)}
+                ],
                 "abc": traj.atoms.positions[i] / boxdim[:3],
             }
             sites.append(site)
     else:
         for i in range(nsites):
             site = {
-                "species": [{"element": traj.atoms.elements[i], "occu": getoccu(traj, i)}],
+                "species": [
+                    {"element": traj.atoms.elements[i], "occu": getoccu(traj, i)}
+                ],
                 "abc": traj.trajectory[frame].positions[i] / boxdim[:3],
             }
             sites.append(site)
@@ -421,22 +460,32 @@ def generate_pymatgen_from_mdtraj(traj, frame):
 
 
 def get_formula_reduced_and_anonymous(struct):
-
     def sort_second(val):
         return val[1]
 
     # TODO find a better method for rounding down the elemental composition. if one element is
-    el = struct.composition.alphabetical_formula
-    formula_components = re.split("([A-Z][a-z]?)", el)
+    formula = struct.composition.alphabetical_formula
+    formula_components = re.split("([A-Z][a-z]?)", formula)
     formula_pairs = []
     for i in range(1, len(formula_components), 2):
-        if formula_components[i + 1] == '':
-            formula_components[i + 1] = '1'
-        formula_pairs.append((formula_components[i], round(float(formula_components[i + 1]))))
-    formula_reduced = "".join(["".join([pair[0], re.sub("^[1]$", "", str(pair[1]))]) for pair in formula_pairs])
+        if formula_components[i + 1] == "":
+            formula_components[i + 1] = "1"
+        formula_pairs.append(
+            (formula_components[i], round(float(formula_components[i + 1])))
+        )
+    formula_reduced = "".join(
+        [
+            "".join([pair[0], re.sub("^[1]$", "", str(pair[1]))])
+            for pair in formula_pairs
+        ]
+    )
     formula_pairs.sort(key=sort_second, reverse=True)
     formula_anonymous = "".join(
-        ["".join([ANONYMOUS_ELEMENTS[i], re.sub("^[1]$", "", str(pair[1]))]) for i, pair in enumerate(formula_pairs)])
+        [
+            "".join([ANONYMOUS_ELEMENTS[i], re.sub("^[1]$", "", str(pair[1]))])
+            for i, pair in enumerate(formula_pairs)
+        ]
+    )
 
     return formula_reduced, formula_anonymous
 
@@ -446,24 +495,36 @@ def get_biomol_fields(traj):
     biomol_chains = []
     chain_id_to_index = {}
     for res in traj.residues:
-        if res.icode == '':
+        if res.icode == "":
             insertion_code = None
         else:
             insertion_code = res.icode
-        residue_dict = {"name": res.resname, "number": int(res.resnum), "insertion_code": insertion_code, "sites": res.atoms.indices.tolist()}
+        residue_dict = {
+            "name": res.resname,
+            "number": int(res.resnum),
+            "insertion_code": insertion_code,
+            "sites": res.atoms.indices.tolist(),
+        }
         biomol_residues.append(residue_dict)
 
         # MDanalysis does not have a datatype equivalent to the chain in a pdb file so we have to construct it based on the information in the residues and the segments
-        chain_index, chain_id_to_index = get_chain_indixes([res.segid], chain_id_to_index)
-        type = get_res_type(res.resname)
+        chain_index, chain_id_to_index = get_chain_indixes(
+            [res.segid], chain_id_to_index
+        )
+        res_type = get_res_type(res.resname)
         if chain_index[0] >= len(biomol_chains):  # a new chain has been found
-            chain_dict = {"name": res.segid, "residues": [int(res.resindex)], "types": [type], "sequences": [],
-                          "sequence_types": []}
+            chain_dict = {
+                "name": res.segid,
+                "residues": [int(res.resindex)],
+                "types": [res_type],
+                "sequences": [],
+                "sequence_types": [],
+            }
             biomol_chains.append(chain_dict)
         else:  # case existing chain
             biomol_chains[chain_index[0]]["residues"].append(int(res.resindex))
-            if type not in biomol_chains[chain_index[0]]["types"]:
-                biomol_chains[chain_index[0]]["types"].append(type)
+            if res_type not in biomol_chains[chain_index[0]]["types"]:
+                biomol_chains[chain_index[0]]["types"].append(res_type)
 
     # _biomol_sequences
 
@@ -478,15 +539,25 @@ def get_biomol_fields(traj):
             res_type = get_res_type(res.resname)
             if (current_type in MONOMER_TYPES) and res_type != current_type:
                 # reached the end of a sequence so make a new sequence
-                sequence = ''.join(residue_name_list)
-                chains, chain_id_to_index = get_chain_indixes(seg_id_set, chain_id_to_index)
-                biomol_sequences.append({"sequence": sequence, "type": current_type, "chains": chains,
-                                         "residues": residue_index_list})  # TODO In the specifictaion written by Dani https://github.com/Materials-Consortia/OPTIMADE/pull/400/files a se
+                sequence = "".join(residue_name_list)
+                chains, chain_id_to_index = get_chain_indixes(
+                    seg_id_set, chain_id_to_index
+                )
+                biomol_sequences.append(
+                    {
+                        "sequence": sequence,
+                        "type": current_type,
+                        "chains": chains,
+                        "residues": residue_index_list,
+                    }
+                )  # TODO In the specifictaion written by Dani https://github.com/Materials-Consortia/OPTIMADE/pull/400/files a se
                 current_type = res_type
                 residue_index_list = []
                 residue_name_list = []
                 seg_id_set = set()
-            if res_type in MONOMER_TYPES:  # No sequence is generated for segment types other than RNA, DNA and aminoacids
+            if (
+                res_type in MONOMER_TYPES
+            ):  # No sequence is generated for segment types other than RNA, DNA and aminoacids
                 # sequence continues
                 if res_type == "DNA":
                     resname = DNA_DICT[res.resname]
@@ -500,10 +571,16 @@ def get_biomol_fields(traj):
                 current_type = res_type
         # finally at the end of the sequence store the final sequence
         if current_type in MONOMER_TYPES:
-            sequence = ''.join(residue_name_list)
+            sequence = "".join(residue_name_list)
             chains, chain_id_to_index = get_chain_indixes(seg_id_set, chain_id_to_index)
             biomol_sequences.append(
-                {"sequence": sequence, "type": current_type, "chains": chains, "residues": residue_index_list})
+                {
+                    "sequence": sequence,
+                    "type": current_type,
+                    "chains": chains,
+                    "residues": residue_index_list,
+                }
+            )
 
     # Add sequence info to chain
     for sequence in biomol_sequences:
@@ -519,8 +596,31 @@ IONS = ["CL", "MN"]
 MONOMER_TYPES = ("RNA", "DNA", "amino_acid")
 DNA_DICT = {"DA": "A", "DC": "C", "DG": "G", "DT": "T", "DI": "I"}
 RNA_LIST = ["C", "G", "A", "U", "I"]
-AMINOACID_DICT = {"ALA": "A", "ARG": "R", "ASN": "N", "ASP": "D", "ASX": "B", "CYS": "C",
-                  "GLU": "E", "GLN": "Q", "GLX": "Z", "GLY": "G", "HIS": "H", "ILE": "I",
-                  "LEU": "L", "LYS": "K", "MET": "M", "PHE": "F", "PRO": "P", "SER": "S",
-                  "THR": "T", "TRP": "W", "TYR": "Y", "VAL": "V", "SEC": "U", "PYL": "O",
-                  "XLE": "J", "XAA": "X"}
+AMINOACID_DICT = {
+    "ALA": "A",
+    "ARG": "R",
+    "ASN": "N",
+    "ASP": "D",
+    "ASX": "B",
+    "CYS": "C",
+    "GLU": "E",
+    "GLN": "Q",
+    "GLX": "Z",
+    "GLY": "G",
+    "HIS": "H",
+    "ILE": "I",
+    "LEU": "L",
+    "LYS": "K",
+    "MET": "M",
+    "PHE": "F",
+    "PRO": "P",
+    "SER": "S",
+    "THR": "T",
+    "TRP": "W",
+    "TYR": "Y",
+    "VAL": "V",
+    "SEC": "U",
+    "PYL": "O",
+    "XLE": "J",
+    "XAA": "X",
+}
