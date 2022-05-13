@@ -231,21 +231,16 @@ def load_trajectory_data(
     mongoid = trajectories_coll.insert([entry]).inserted_ids[0]
     if not id:
         id = str(mongoid)
-
-    trajectories_coll.collection.update_one(
-        {"_id": mongoid}, {"$set": {"id": id}}
-    )
+    fields_to_add = {"id": id}
 
     if (type == "trajectories"):
         # Write trajectory data in HDF5 format
         if n_frames * nsites * 3 * 4 > 16 * 1024:  # If the trajectory is larger than about 16 kb store it in hdf5 file
             hdf5path = storage_dir + id + ".hdf5"
-            trajectories_coll.collection.update_one(
-                {"_id": mongoid}, {"$set": {"_hdf5file_path": hdf5path}}
-            )
-            with h5py.File(
-                    hdf5path, "w"
-            ) as hdf5file:  # TODO It would be better to use a try and except around storing the data. If writing the data to the hdf5 file failes the corresponding entry should be removed from the mongo DB.
+            fields_to_add["_hdf5file_path"] = hdf5path
+
+            # TODO It would be better to use a try and except around storing the data. If writing the data to the hdf5 file failes the corresponding entry should be removed from the mongo DB.
+            with h5py.File(hdf5path, "w") as hdf5file:
                 #TODO It would be nice as we could store all the trajectory data in the HDF5 file So we should still add the storing of the other relevant trajectory info here as well.
 
                 if traj.trajectory[
@@ -271,42 +266,30 @@ def load_trajectory_data(
                     if random.randrange(0, 10) >= 5:
                         frames.append(i)
                         positions.append(traj.trajectory[i].positions.tolist())
-                trajectories_coll.collection.update_one(
-                    {"_id": mongoid}, {"$set": {"cartesian_site_positions.frames": frames,
-                                                "cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
-                                                "cartesian_site_positions.nvalues": len(frames)}}
-                )
-                trajectories_coll.collection.update_one(
-                    {"_id": mongoid}, {"$set": {
-                        "available_properties.cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
-                        "available_properties.cartesian_site_positions.nvalues": len(frames),
-                    }
-                    }
-                )
+                fields_to_add.update({"available_properties.cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
+                    "available_properties.cartesian_site_positions.nvalues": len(frames),
+                    "cartesian_site_positions.frames": frames,
+                    "cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
+                    "cartesian_site_positions.nvalues": len(frames)})
+
             elif "Br" in elements:
                 for i in range(0, n_frames, 2):
                     positions.append(traj.trajectory[i].positions.tolist())
-                trajectories_coll.collection.update_one(
-                    {"_id": mongoid}, {"$set": {"cartesian_site_positions.step_size_sparse": 2,
-                                                "cartesian_site_positions.offset_sparse": 0,
-                                                "cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
-                                                "cartesian_site_positions.nvalues": len(positions)}}
-                )
-                trajectories_coll.collection.update_one(
-                    {"_id": mongoid}, {"$set": {
-                        "available_properties.cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
-                        "available_properties.cartesian_site_positions.nvalues": len(positions),
-                    }
-                    }
-                )
+                fields_to_add.update({"cartesian_site_positions.step_size_sparse": 2,
+                    "cartesian_site_positions.offset_sparse": 0,
+                    "cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
+                    "cartesian_site_positions.nvalues": len(positions),
+                    "available_properties.cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
+                    "available_properties.cartesian_site_positions.nvalues": len(positions)})
+
             else:
                 for i in range(first_frame, last_frame, frame_step):
                     positions.append(traj.trajectory[i].positions.tolist())
-
-            trajectories_coll.collection.update_one(
-                {"_id": mongoid}, {"$set": {"cartesian_site_positions._storage_location": "mongo",
-                                            "cartesian_site_positions.values": positions}}
-            )
+            fields_to_add.update({"cartesian_site_positions._storage_location": "mongo",
+                                            "cartesian_site_positions.values": positions})
+    trajectories_coll.collection.update_one(
+        {"_id": mongoid}, {"$set": fields_to_add}
+    )
 
 
 def flip_chem_form_anon(chemical_formula_anonymous: str) -> str:

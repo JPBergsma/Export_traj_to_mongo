@@ -1,8 +1,8 @@
 from exporttomongo import load_trajectory_data
 
 trajectories = [#{"structurefile": "/home/kwibus/Documents/Cecam/testfiles/OBr2.xyz"},
-                #{"structurefile": "/home/kwibus/Documents/Cecam/testfiles/OF2.xyz"},
-                {"structurefile": "/home/kwibus/Documents/Cecam/testfiles/water_rotating.xyz"}
+                {"structurefile": "/home/kwibus/Documents/Cecam/testfiles/OF2.xyz"},
+                #{"structurefile": "/home/kwibus/Documents/Cecam/testfiles/water_rotating.xyz"}
                 #{"structurefile": "/home/kwibus/Documents/Cecam/testfiles/ala_small_traj.pdb"},
                #{"structurefile": "/home/kwibus/Documents/Cecam/testfiles/TRAJ.xyz", "last_frame": 99, "first_frame": 0},
                 #{"structurefile": "/home/kwibus/Documents/Cecam/testfiles/1KX5.pdb"}
