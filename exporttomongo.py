@@ -2,9 +2,12 @@ import re
 import datetime
 import warnings
 import sys
+from typing import List
 import MDAnalysis as mda
 import pymatgen.core
 import h5py
+import numpy as np
+
 
 sys.path.append("/home/kwibus/PycharmProjects/Optimade/optimade-python-tools/")
 from optimade.server.config import CONFIG
@@ -17,8 +20,8 @@ from optimade.server.mappers import TrajectoryMapper, ReferenceMapper
 
 def load_trajectory_data(
     structure_file: str,
-    trajectory_files: list[str] = None,
-    references: list[dict] = None,
+    trajectory_files: List[str] = None,
+    references: List[dict] = None,
     first_frame: int = 0,
     last_frame: int = None,
     storage_dir: str = None,
@@ -463,26 +466,21 @@ def get_formula_reduced_and_anonymous(struct):
     def sort_second(val):
         return val[1]
 
-    # TODO find a better method for rounding down the elemental composition. if one element is
+    # TODO find a better method for rounding down the elemental composition.
     formula = struct.composition.alphabetical_formula
     formula_components = re.split("([A-Z][a-z]?)", formula)
-    formula_pairs = []
-    for i in range(1, len(formula_components), 2):
-        if formula_components[i + 1] == "":
-            formula_components[i + 1] = "1"
-        formula_pairs.append(
-            (formula_components[i], round(float(formula_components[i + 1])))
-        )
+    formula_pairs = [(formula_components[i], round(float(formula_components[i + 1]))) for i in range(1, len(formula_components), 2)]
+    gcd = np.gcd.reduce([i[1] for i in formula_pairs])
     formula_reduced = "".join(
         [
-            "".join([pair[0], re.sub("^[1]$", "", str(pair[1]))])
+            "".join([pair[0], re.sub("^[1]$", "", str(pair[1]//gcd))])
             for pair in formula_pairs
         ]
     )
     formula_pairs.sort(key=sort_second, reverse=True)
     formula_anonymous = "".join(
         [
-            "".join([ANONYMOUS_ELEMENTS[i], re.sub("^[1]$", "", str(pair[1]))])
+            "".join([ANONYMOUS_ELEMENTS[i], re.sub("^[1]$", "", str(pair[1]//gcd))])
             for i, pair in enumerate(formula_pairs)
         ]
     )
