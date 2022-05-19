@@ -3,10 +3,10 @@ import datetime
 import warnings
 import sys
 from typing import List
+import numpy as np
 import MDAnalysis as mda
 import pymatgen.core
 import h5py
-import numpy as np
 
 
 sys.path.append("/home/kwibus/PycharmProjects/Optimade/optimade-python-tools/")
@@ -19,16 +19,16 @@ from optimade.server.mappers import TrajectoryMapper, ReferenceMapper
 
 
 def load_trajectory_data(
-    structure_file: str,
-    trajectory_files: List[str] = None,
-    references: List[dict] = None,
-    first_frame: int = 0,
-    last_frame: int = None,
-    storage_dir: str = None,
-    frame_step: int = 1,
-    traj_id: str = None,
-    reference_frame: int = 0,
-):
+        structure_file: str,
+        trajectory_files: List[str] = None,
+        references: List[dict] = None,
+        first_frame: int = 0,
+        last_frame: int = None,
+        storage_dir: str = None,
+        frame_step: int = 1,
+        traj_id: str = None,
+        reference_frame: int = 0,
+    ):
     """This function loads a trajectory file with MDAnalysis library and Extracts the OPTIMADE fields and stores it in mongoDB.
 
     arguments: structure_file: A file containing the structural information about the compounds in the trajectory.
@@ -142,18 +142,6 @@ def load_trajectory_data(
             structure_features.append("disorder")
             break
 
-    available_properties = {
-        "cartesian_site_positions": {
-            "frame_serialization_format": "explicit",
-            "nvalues": n_frames,
-            # TODO find examples of trajectories where the number of coordinates sets and the number of frames does not match.
-        },
-        "lattice_vectors": {"frame_serialization_format": "constant"},
-        "species": {"frame_serialization_format": "constant"},
-        "dimension_types": {"frame_serialization_format": "constant"},
-        "species_at_sites": {"frame_serialization_format": "constant"},
-    }
-
     # MDAnalysis throws a warning when the timestep is not specified but does return a reasonable value of 1.0 ps. This can be confusing, so I therefore choose to catch this warning.
     # We do not want this warning to be displayed to the user so we temporarely allow only errors to be reported.
     warnings.filterwarnings("error")
@@ -165,9 +153,6 @@ def load_trajectory_data(
     warnings.filterwarnings("default")
 
     # TODO find examples of trajectories where the number of coordinates sets and the number of frames does not match.
-
-    if time_present:  # if the time step is not zero or none
-        available_properties["time"] = {"frame_serialization_format": "linear"}
 
     reference_structure = {
         "elements": elements,
@@ -190,42 +175,19 @@ def load_trajectory_data(
         "reference_structure": reference_structure,
         "nframes": n_frames,
         "reference_frame": reference_frame-first_frame,
-        "available_properties": available_properties,
+        "available_properties": {},
         "type": entry_type,
         "last_modified": last_modified(),
-        "cartesian_site_positions": {
-            "frame_serialization_format": "explicit",
-            "nvalues": n_frames,
-            "_storage_location": "file",
-        },
-        "lattice_vectors": {
-            "frame_serialization_format": "constant",
-            "_storage_location": "mongo",
-            "values": [lattice_vectors],
-        },
-        "species": {
-            "frame_serialization_format": "constant",
-            "_storage_location": "mongo",
-            "values": [species],
-        },
-        "dimension_types": {
-            "frame_serialization_format": "constant",
-            "_storage_location": "mongo",
-            "values": [dimension_types],
-        },
-        "species_at_sites": {
-            "frame_serialization_format": "constant",
-            "_storage_location": "mongo",
-            "values": [species_at_sites],
-        },
     }
-    if time_present:
-        entry["_exmpl_time"] = {
-            "_storage_location": "mongo",
-            "frame_serialization_format": "linear",
-            "offset_linear": traj.trajectory[0].time,
-            "step_size_linear": dt,
-        }
+
+    nested_dict_update(entry, gen_traj_prop("lattice_vectors", "constant", values=[lattice_vectors]))
+    nested_dict_update(entry, gen_traj_prop("species", "constant", values=[species]))
+    nested_dict_update(entry, gen_traj_prop("dimension_types", "constant", values=[dimension_types]))
+    nested_dict_update(entry, gen_traj_prop("species_at_sites", "constant", values=[species_at_sites]))
+    nested_dict_update(entry, gen_traj_prop("cartesian_site_positions", "explicit", storage_location="file", nvalues=n_frames))
+
+    if time_present:  # if the time step is not zero or none
+        nested_dict_update(entry, gen_traj_prop("time", "linear", offset_linear=traj.trajectory[0].time, step_size_linear=dt))
 
     # step 3.5 add references
     if references:
@@ -233,13 +195,12 @@ def load_trajectory_data(
 
     # Generate biomolecular fields:
 
-    if hasattr(
-        traj.residues, "icodes"
-    ):  # TODO need a more thorough way to determine if it is a biomolecular simulation.
+    # TODO need a more thorough way to determine if it is a biomolecular simulation.
+    if hasattr(traj.residues, "icodes"):
         sequences, residues, chains = get_biomol_fields(traj)
-        entry["sequences"] = sequences
-        entry["residues"] = residues
-        entry["chains"] = chains
+        nested_dict_update(entry, gen_traj_prop("sequences", "constant", values=[sequences]))
+        nested_dict_update(entry, gen_traj_prop("residues", "constant", values=[residues]))
+        nested_dict_update(entry, gen_traj_prop("chains", "constant", values=[chains]))
 
     # Step 4: store trajectory data
 
@@ -255,9 +216,8 @@ def load_trajectory_data(
 
     if entry_type == "trajectories":
         # Write trajectory data in HDF5 format
-        if (
-            n_frames * nsites * 3 * 4 > 16 * 1024
-        ):  # If the trajectory is larger than about 16 kb store it in hdf5 file
+        # If the trajectory is larger than about 16 kb store it in hdf5 file TODO: set this value in a config file
+        if n_frames * nsites * 3 * 4 > 16 * 1024:
             hdf5path = storage_dir + traj_id + ".hdf5"
             fields_to_add["_hdf5file_path"] = hdf5path
 
@@ -265,21 +225,16 @@ def load_trajectory_data(
             with h5py.File(hdf5path, "w") as hdf5file:
                 # TODO It would be nice as we could store all the trajectory data in the HDF5 file So we should still add the storing of the other relevant trajectory info here as well.
 
-                if traj.trajectory[
-                    reference_frame
-                ].has_positions:  # TODO check whether there are more properties that can be stored such as force and velocities
+                # TODO check whether there are more properties that can be stored such as force and velocities
+                if traj.trajectory[reference_frame].has_positions:
                     arr = hdf5file.create_dataset(
                         "cartesian_site_positions/values",
                         (n_frames, nsites, 3),
                         chunks=True,
                         dtype=traj.trajectory[0].positions[0][0].dtype,
                     )  # TODO allow for varying number of particles
-                    for i in range(
-                        first_frame, last_frame, frame_step
-                    ):  # TODO offer the option to place only a part of the frames in the database
-                        arr[(i - first_frame) // frame_step] = traj.trajectory[
-                            i
-                        ].positions
+                    for i in range(first_frame, last_frame, frame_step):
+                        arr[(i - first_frame) // frame_step] = traj.trajectory[i].positions
 
         else:  # If the trajectory is small it can be stored locally
             positions = []
@@ -331,6 +286,44 @@ def load_trajectory_data(
                 }
             )
     trajectories_coll.collection.update_one({"_id": mongoid}, {"$set": fields_to_add})
+
+
+def gen_traj_prop(property_name: str, frame_serialization_format: str, values: List = None, frames: List = None,
+                  offset_sparse: int = 0, step_size_sparse: int = 1, offset_linear: float = 0,
+                  step_size_linear: float = None, storage_location: str = "mongo", nvalues: int = None):
+    to_add_to_dict = {"available_properties": {property_name: {"frame_serialization_format": frame_serialization_format}},
+                      property_name: {"frame_serialization_format": frame_serialization_format, "_storage_location": storage_location}}
+
+    if frame_serialization_format == "linear":
+        return nested_dict_update(to_add_to_dict, {property_name: {"offset_linear": offset_linear, "step_size_linear": step_size_linear}})
+
+    if storage_location == "mongo":
+        nested_dict_update(to_add_to_dict, {property_name: {"values": values}})
+
+    if nvalues is None:
+        nvalues = len(values)
+    nested_dict_update(to_add_to_dict, {"available_properties": {property_name: {"nvalues": nvalues}},
+                                        property_name: {"nvalues": nvalues}})
+
+    if frame_serialization_format in ["constant", "explicit"]:
+        return to_add_to_dict
+
+    if "frame_serialization_format" == "explicit_custom_sparse":
+        return nested_dict_update(to_add_to_dict, {property_name: {"frames": frames}})
+
+    if "frame_serialization_format" == "explicit_regular_sparse":
+        nested_dict_update(to_add_to_dict, {property_name: {"step_size_sparse": step_size_sparse}})
+        return nested_dict_update(to_add_to_dict, {property_name: {"offset_sparse": offset_sparse}})
+
+
+def nested_dict_update(dict1, dict2):
+    for key, val in dict2.items():
+        if key in dict1 and isinstance(val, dict):
+            if isinstance(dict1[key], dict):
+                nested_dict_update(dict1[key], dict2[key])
+        else:
+            dict1[key] = dict2[key]
+    return dict1
 
 
 def flip_chem_form_anon(chemical_formula_anonymous: str) -> str:
@@ -437,9 +430,8 @@ def generate_pymatgen_from_mdtraj(traj, frame):
     sites = []
 
     single_frame = len(traj.trajectory) == 1
-    if (
-        single_frame
-    ):  # somehow reading a structure as a trajectory is very slow so instead we read the positions from the atoms.
+    # Somehow reading a structure as a trajectory is very slow so instead we read the positions from the atoms.
+    if (single_frame):
         for i in range(nsites):
             site = {
                 "species": [
@@ -553,9 +545,9 @@ def get_biomol_fields(traj):
                 residue_index_list = []
                 residue_name_list = []
                 seg_id_set = set()
-            if (
-                res_type in MONOMER_TYPES
-            ):  # No sequence is generated for segment types other than RNA, DNA and aminoacids
+
+            # No sequence is generated for segment types other than RNA, DNA and aminoacids
+            if (res_type in MONOMER_TYPES):
                 # sequence continues
                 if res_type == "DNA":
                     resname = DNA_DICT[res.resname]
