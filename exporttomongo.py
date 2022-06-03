@@ -8,7 +8,6 @@ import MDAnalysis as mda
 import pymatgen.core
 import h5py
 
-
 sys.path.append("/home/kwibus/PycharmProjects/Optimade/optimade-python-tools/")
 from optimade.server.config import CONFIG
 from optimade.server.entry_collections import create_collection
@@ -57,7 +56,7 @@ def load_trajectory_data(
 
     # Step2 generate pymatgen structure from MDAnalysis structure so we can also use the methods of pymatgen
     reference_frame = reference_frame + first_frame
-    struct = generate_pymatgen_from_mdtraj(traj, reference_frame)
+    struct = generate_pymatgen_from_mdanal(traj, reference_frame)
 
     # step 3: generate all the neccesary OPTIMADE fields from the data
     # TODO add automatically reading the units from the data if present
@@ -72,25 +71,33 @@ def load_trajectory_data(
 
     # immutable_id (OPTIONAL)
     # last_modified handled by the function current_time()
-    # elements
-    elements = sorted(struct.symbol_set)
-    # nelements
-    nelements = len(elements)
-    # elements_ratios
-    elements_ratios = [
-        float(i)
-        for i in re.sub(
-            "[A-Z][a-z]*",
-            "",
-            struct.composition.fractional_composition.alphabetical_formula,
-        ).split()
-    ]
-    # chemical_formula_descriptive
-    chemical_formula_descriptive = struct.composition.alphabetical_formula.replace(
-        " ", ""
-    )
-    # chemical_formula_reduced and chemical_formula_anonymous
-    chemical_formula_reduced, chemical_formula_anonymous = get_formula_reduced_and_anonymous(struct)
+    if struct:
+        # elements
+        elements = sorted(struct.symbol_set)
+        # nelements
+        nelements = len(elements)
+        # elements_ratios
+        elements_ratios = [
+            float(i)
+            for i in re.sub(
+                "[A-Z][a-z]*",
+                "",
+                struct.composition.fractional_composition.alphabetical_formula,
+            ).split()
+        ]
+        # chemical_formula_descriptive
+        chemical_formula_descriptive = struct.composition.alphabetical_formula.replace(
+            " ", ""
+        )
+        # chemical_formula_reduced and chemical_formula_anonymous
+        chemical_formula_reduced, chemical_formula_anonymous = get_formula_reduced_and_anonymous(struct)
+    else:
+        elements = None
+        nelements = None
+        elements_ratios = None
+        chemical_formula_descriptive = None
+        chemical_formula_reduced, chemical_formula_anonymous = None, None
+
 
     # chemical_formula_hill(OPTIONAL) Not yet implemented
 
@@ -104,33 +111,43 @@ def load_trajectory_data(
         nperiodic_dimensions = None
 
     # lattice_vectors
-    if hasattr(traj.trajectory[reference_frame], "dimensions"):
-        lattice_vectors = struct.lattice.matrix.tolist()
-    else:
+    latt = get_lattice_dict(traj, reference_frame)
+    if latt is None:
         lattice_vectors = None
+    else:
+        lattice_vectors = pymatgen.core.Lattice.from_dict().matrix.tolist()
 
     # cartesian_site_positions
-    cartesian_site_positions = struct.cart_coords.tolist()
+    cartesian_site_positions = traj.trajectory[reference_frame].positions.tolist()
 
     # nsites
     nsites = traj.atoms.n_atoms
 
     # species_at_sites
-    species_at_sites = traj.atoms.names.tolist()
+    if hasattr(traj.atoms, "names"):
+        species_at_sites = traj.atoms.names.tolist()
+    else:
+        species_at_sites = ["X"]*nsites
 
     # species  # TODO the atom names/labels may not be unique enough in some cases. In that case extra descriptors such as the number of attached hydrogens or the charge have to be added.
     species = []
     for specie in set(species_at_sites):
         index = species_at_sites.index(specie)
-        species.append(
-            {
+        specie_dict = {
                 "name": specie,
-                "chemical_symbols": [traj.atoms.elements[index]],
                 "concentration": [getoccu(traj, index)],
-                "mass": [traj.atoms.masses[index]],
-                "_biomol_atom_name": specie,
+
             }
-        )
+        if hasattr(traj.atoms,"elements"):
+            specie_dict["chemical_symbols"] = [traj.atoms.elements[index]]
+            specie_dict["mass"]: [traj.atoms.masses[index]]
+        else:
+            specie_dict["chemical_symbols"] = ["X"]
+
+        if hasattr(traj.residues, "icodes"):
+            specie_dict["_biomol_atom_name"] = specie # this will only become relevant when a more advanced species name generation is implemented.
+
+        species.append(specie_dict)
 
     # assemblies(OPTIONAL)
 
@@ -393,30 +410,37 @@ def get_chain_indixes(seg_id_set, chain_id_to_index):
     return chains, chain_id_to_index
 
 
-def generate_pymatgen_from_mdtraj(traj, frame):
+def get_lattice_dict(traj, frame):
+
+    if not hasattr(traj.trajectory, "dimensions") or traj.trajectory[frame].dimensions is None:
+        return None
+    boxdim = traj.trajectory[frame].dimensions[:3]
+    lattice = {
+            "a": boxdim[0],
+            "b": boxdim[1],
+            "c": boxdim[2],
+            "alpha": traj.trajectory[frame].dimensions[3],
+            "beta": traj.trajectory[frame].dimensions[4],
+            "gamma": traj.trajectory[frame].dimensions[5],
+        }
+    return lattice
+
+
+def generate_pymatgen_from_mdanal(traj, frame):
     """Generates a pymatgen structure object from a frame of a MDanalysis trajectory object.
 
     arguments: traj MDanalysis trajectory object.
                frame  the frame of the trajectory for which the pymatgen structure object should be generated.
     """
+    if not hasattr(traj.atoms, "elements"): # If the trajectory is loaded without the topology file the elements may not be defined
+        return None
 
     nsites = traj.atoms.n_atoms
-    if traj.trajectory[frame].dimensions is not None:
-        boxdim = traj.trajectory[frame].dimensions[:3]
-        dictstruct = {
-            "lattice": {
-                "a": boxdim[0],
-                "b": boxdim[1],
-                "c": boxdim[2],
-                "alpha": traj.trajectory[frame].dimensions[3],
-                "beta": traj.trajectory[frame].dimensions[4],
-                "gamma": traj.trajectory[frame].dimensions[5],
-            }
-        }
-    else:
-        boxdim = [1.0, 1.0, 1.0]
-        dictstruct = {
-            "lattice": {
+
+    lattice_dict = {"lattice": get_lattice_dict(traj, frame)}
+    if lattice_dict["lattice"] is None:
+        boxdim = [1.0, 1.0, 1.0]  # TODO: ADD warning that information about the lattice is missing
+        lattice_dict["lattice"] = {
                 "a": boxdim[0],
                 "b": boxdim[1],
                 "c": boxdim[2],
@@ -424,13 +448,15 @@ def generate_pymatgen_from_mdtraj(traj, frame):
                 "beta": 90.0,
                 "gamma": 90.0,
             }
-        }
+    else:
+        boxdim = traj.trajectory[frame].dimensions[:3]
 
-    # dictstruct["charge"] = TODO MDTRAJ does not read charges from pdb files yet so we cannot implement this yet.
+    # lattice_dict["charge"] = TODO MDTRAJ does not read charges from pdb files yet so we cannot implement this yet.
     sites = []
 
     single_frame = len(traj.trajectory) == 1
     # Somehow reading a structure as a trajectory is very slow so instead we read the positions from the atoms.
+
     if (single_frame):
         for i in range(nsites):
             site = {
@@ -450,8 +476,8 @@ def generate_pymatgen_from_mdtraj(traj, frame):
             }
             sites.append(site)
 
-    dictstruct["sites"] = sites
-    return pymatgen.core.structure.IStructure.from_dict(dictstruct)
+    lattice_dict["sites"] = sites
+    return pymatgen.core.structure.IStructure.from_dict(lattice_dict)
 
 
 def get_formula_reduced_and_anonymous(struct):
@@ -597,11 +623,14 @@ AMINOACID_DICT = {
     "GLN": "Q",
     "GLX": "Z",
     "GLY": "G",
+    "HID": "H", # The HID and HIE are sometimes erroneously used to indicate the position at which the proton is bound to the imidazole ring. # TODO HID is also used for a particular cofactor. The code should therefore be improved to distinguish these cases or raise an error
+    "HIE": "H",
     "HIS": "H",
     "ILE": "I",
     "LEU": "L",
     "LYS": "K",
     "MET": "M",
+    "NAG": "X",
     "PHE": "F",
     "PRO": "P",
     "SER": "S",
