@@ -1,7 +1,6 @@
 import re
 import datetime
 import warnings
-import sys
 from typing import List
 import numpy as np
 import MDAnalysis as mda
@@ -24,7 +23,7 @@ def load_trajectory_data(
         references: List[dict] = None,
         first_frame: int = 0,
         last_frame: int = None,
-        storage_dir: str = None,
+        storage_dir: Path = None,
         frame_step: int = 1,
         traj_id: str = None,
         reference_frame: int = 0,
