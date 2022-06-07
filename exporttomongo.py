@@ -7,8 +7,9 @@ import numpy as np
 import MDAnalysis as mda
 import pymatgen.core
 import h5py
+from pathlib import Path
 
-sys.path.append("/home/kwibus/PycharmProjects/Optimade/optimade-python-tools/")
+#sys.path.append("/home/kwibus/PycharmProjects/Optimade/optimade-python-tools/")
 from optimade.server.config import CONFIG
 from optimade.server.entry_collections import create_collection
 from optimade.models.trajectories import TrajectoryResource
@@ -18,8 +19,8 @@ from optimade.server.mappers import TrajectoryMapper, ReferenceMapper
 
 
 def load_trajectory_data(
-        structure_file: str,
-        trajectory_files: List[str] = None,
+        structure_file: Path,
+        trajectory_files: List[Path] = None,
         references: List[dict] = None,
         first_frame: int = 0,
         last_frame: int = None,
@@ -235,8 +236,8 @@ def load_trajectory_data(
         # Write trajectory data in HDF5 format
         # If the trajectory is larger than about 16 kb store it in hdf5 file TODO: set this value in a config file
         if n_frames * nsites * 3 * 4 > 16 * 1024:
-            hdf5path = storage_dir + traj_id + ".hdf5"
-            fields_to_add["_hdf5file_path"] = hdf5path
+            hdf5path = storage_dir/(traj_id+".hdf5")
+            fields_to_add["_hdf5file_path"] = str(hdf5path)
 
             # TODO It would be better to use a try and except around storing the data. If writing the data to the hdf5 file failes the corresponding entry should be removed from the mongo DB.
             with h5py.File(hdf5path, "w") as hdf5file:
@@ -257,45 +258,8 @@ def load_trajectory_data(
             positions = []
 
             # To cover all the different cases for testing I encode the information about the trajectory in a different ways here.
-            if "F" in elements:
-                import random
-
-                frames = []
-                for i in range(n_frames):
-                    if random.randrange(0, 10) >= 5:
-                        frames.append(i)
-                        positions.append(traj.trajectory[i].positions.tolist())
-                fields_to_add.update(
-                    {
-                        "available_properties.cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
-                        "available_properties.cartesian_site_positions.nvalues": len(
-                            frames
-                        ),
-                        "cartesian_site_positions.frames": frames,
-                        "cartesian_site_positions.frame_serialization_format": "explicit_custom_sparse",
-                        "cartesian_site_positions.nvalues": len(frames),
-                    }
-                )
-
-            elif "Br" in elements:
-                for i in range(0, n_frames, 2):
-                    positions.append(traj.trajectory[i].positions.tolist())
-                fields_to_add.update(
-                    {
-                        "cartesian_site_positions.step_size_sparse": 2,
-                        "cartesian_site_positions.offset_sparse": 0,
-                        "cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
-                        "cartesian_site_positions.nvalues": len(positions),
-                        "available_properties.cartesian_site_positions.frame_serialization_format": "explicit_regular_sparse",
-                        "available_properties.cartesian_site_positions.nvalues": len(
-                            positions
-                        ),
-                    }
-                )
-
-            else:
-                for i in range(first_frame, last_frame, frame_step):
-                    positions.append(traj.trajectory[i].positions.tolist())
+            for i in range(first_frame, last_frame, frame_step):
+                positions.append(traj.trajectory[i].positions.tolist())
             fields_to_add.update(
                 {
                     "cartesian_site_positions._storage_location": "mongo",

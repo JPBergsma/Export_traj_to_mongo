@@ -1,15 +1,17 @@
 # Export_traj_to_mongo
 
-This python script is used for reading Molecular dynamics trajectories and extracting the OPTIMADE fields to store it in an OPTIMADE database that is complient with the optimade python tools .
+
+This python script is used for extracting the OPTIMADE fields from Molecular dynamics trajectories and store them in an OPTIMADE database that is complient with the optimade python tools.
+At the moment this script is still under devellopment and there is no guarantee that it works.
 The cartesian_site_positions, i.e. the particle positions are stored in a hdf5 file because that field would be to large to store in a mongo DB document.  
 The OPTIMADE standard can be found at https://www.optimade.org/
 The proposed modification of the standard to support trajectory data can be found here: https://github.com/Materials-Consortia/OPTIMADE/pull/377
 The optimade python tools that are in devellopment in parrallel can be found here: https://github.com/Materials-Consortia/optimade-python-tools/pull/1065
-This package depends on the Optimade python tools and will store the data in the mongoDB trajectories_collection which is defined in the config file of the optimade python tools. 
-At the moment this script is still under devellopment and there is no guarantee that it works.
+This devellopment version of the optimade python tools should be installed with the develloper instructions as found under https://www.optimade.org/optimade-python-tools/latest/INSTALL/
+Untill this branch has been merged with the main branch of the optimade python tools you will manulay neeed to install the optimade python tools from this branch.
+This package will store the data in the mongoDB trajectories_collection which is defined in the config file of the optimade python tools. 
 
-An example on how it can be used is given in Demo_Loading_Trajectories_In_MongDB.py
-
+An example on how it can be used is given in Demo_Loading_Trajectories_In_MongDB.py in the Demo folder.
 
 load_trajectory_data(structure_file,
                          trajectory.get("trajectoryfiles", None),
