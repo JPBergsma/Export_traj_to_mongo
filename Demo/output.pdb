@@ -1,0 +1,35 @@
+REMARK   1 CREATED WITH OPENMM 7.6, 2022-05-10
+HETATM    1 Ar    Ar A   1       0.047   0.552   0.579  1.00  0.00          Ar  
+HETATM    2 Ar    Ar A   2       0.523   0.813   0.653  1.00  0.00          Ar  
+HETATM    3 Ar    Ar A   3       0.016   0.182   0.713  1.00  0.00          Ar  
+HETATM    4 Ar    Ar A   4       0.830   0.658   0.023  1.00  0.00          Ar  
+HETATM    5 Ar    Ar A   5       0.565   0.990   0.314  1.00  0.00          Ar  
+HETATM    6 Ar    Ar A   6       0.689   0.182   1.060  1.00  0.00          Ar  
+HETATM    7 Ar    Ar A   7       1.061   0.041   0.347  1.00  0.00          Ar  
+HETATM    8 Ar    Ar A   8       0.040   0.917   0.608  1.00  0.00          Ar  
+HETATM    9 Ar    Ar A   9       0.852   0.456   0.563  1.00  0.00          Ar  
+HETATM   10 Ar    Ar A  10       0.624   0.167   0.716  1.00  0.00          Ar  
+HETATM   11 Ar    Ar A  11       0.228   0.267   0.372  1.00  0.00          Ar  
+HETATM   12 Ar    Ar A  12       0.584   0.591   0.372  1.00  0.00          Ar  
+HETATM   13 Ar    Ar A  13       0.916   0.714   0.771  1.00  0.00          Ar  
+HETATM   14 Ar    Ar A  14       0.908   0.394   0.889  1.00  0.00          Ar  
+HETATM   15 Ar    Ar A  15       1.052   0.390   0.216  1.00  0.00          Ar  
+HETATM   16 Ar    Ar A  16       0.468   0.793   0.078  1.00  0.00          Ar  
+HETATM   17 Ar    Ar A  17       0.374   0.472   0.648  1.00  0.00          Ar  
+HETATM   18 Ar    Ar A  18       0.328   0.170   0.915  1.00  0.00          Ar  
+HETATM   19 Ar    Ar A  19       0.229   1.090   0.226  1.00  0.00          Ar  
+HETATM   20 Ar    Ar A  20       0.302   0.002   0.580  1.00  0.00          Ar  
+HETATM   21 Ar    Ar A  21       0.649   0.930   0.970  1.00  0.00          Ar  
+HETATM   22 Ar    Ar A  22       0.114   0.528   0.976  1.00  0.00          Ar  
+HETATM   23 Ar    Ar A  23       0.823   1.065   0.122  1.00  0.00          Ar  
+HETATM   24 Ar    Ar A  24       0.779   1.031   0.573  1.00  0.00          Ar  
+HETATM   25 Ar    Ar A  25       0.371   0.384   0.075  1.00  0.00          Ar  
+HETATM   26 Ar    Ar A  26       0.961   0.819   0.316  1.00  0.00          Ar  
+HETATM   27 Ar    Ar A  27       0.171   0.917   1.004  1.00  0.00          Ar  
+HETATM   28 Ar    Ar A  28       0.710   0.182   0.386  1.00  0.00          Ar  
+HETATM   29 Ar    Ar A  29       1.073   0.134   1.122  1.00  0.00          Ar  
+HETATM   30 Ar    Ar A  30       0.197   0.630   0.178  1.00  0.00          Ar  
+HETATM   31 Ar    Ar A  31       0.611   0.567   0.916  1.00  0.00          Ar  
+HETATM   32 Ar    Ar A  32       0.972   1.067   0.849  1.00  0.00          Ar  
+TER      33       Ar A  32
+END

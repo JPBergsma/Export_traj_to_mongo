@@ -4,6 +4,8 @@ from pathlib import Path
 trajectories = [{"structurefile": Path(__file__).parent / "TRAJshort.xyz",
                  "references": [
                      {"Author": "Johan Bergsma", "year": "2010", "note": "Any further remarks", "id": "Bergsma2010"}]},
+                {"structurefile": Path(__file__).parent / "output.pdb",
+                 "trajectoryfiles": [str(Path(__file__).parent / "output.dcd")]}
                 ]
 
 for trajectory in trajectories:
