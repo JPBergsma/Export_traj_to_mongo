@@ -1,12 +1,13 @@
 import re
 import datetime
 import warnings
-from typing import List
+from typing import List, Union
 import numpy as np
 import MDAnalysis as mda
 import pymatgen.core
 import h5py
 from pathlib import Path
+from io import StringIO
 
 #sys.path.append("/home/kwibus/PycharmProjects/Optimade/optimade-python-tools/")
 from optimade.server.config import CONFIG
@@ -18,7 +19,7 @@ from optimade.server.mappers import TrajectoryMapper, ReferenceMapper
 
 
 def load_trajectory_data(
-        structure_file: Path,
+        structure_file: Union[Path, StringIO],
         trajectory_files: List[Path] = None,
         references: List[dict] = None,
         first_frame: int = 0,
@@ -26,12 +27,14 @@ def load_trajectory_data(
         storage_dir: Path = None,
         frame_step: int = 1,
         traj_id: str = None,
-        reference_frame: int = 0,
+        reference_frame: int = 1,
+        file_format: str =None,
     ):
     """This function loads a trajectory file with MDAnalysis library and Extracts the OPTIMADE fields and stores it in mongoDB.
 
     arguments: structure_file: A file containing the structural information about the compounds in the trajectory.
                                If there is no separate trajectory file it can also contain trajectory information.
+                               It is also possible to add a stringIO object. In that case the file type should be specified with file_format.
                trajectory_files: a list of files containing the trajectory.
                references: A list of dictionaries containing references belonging to this trajectory.
                            Valid fields are all the fields defined by the bibtech standard.
@@ -42,7 +45,7 @@ def load_trajectory_data(
                last_frame: The last frame which should be stored in the database.
                traj_id : An id for this trajectory that is unique within the database. If no id is provided the id from mongo DB will be used.
                reference_frame: This indicates which frame will be used to generate the reference structure.
-
+               file_format: the filetype of the inputstream as defined by the MDAnalysis package. example "PDB"
     """
 
     # TODO test whether frame step parameters are handled correctly.
@@ -52,10 +55,10 @@ def load_trajectory_data(
     if trajectory_files:
         traj = mda.Universe(structure_file, trajectory_files)
     else:
-        traj = mda.Universe(structure_file)
+        traj = mda.Universe(structure_file, format=file_format)
 
     # Step2 generate pymatgen structure from MDAnalysis structure so we can also use the methods of pymatgen
-    reference_frame = reference_frame + first_frame
+    reference_frame = reference_frame + first_frame - 1  # Optimade starts indexing from 1 whereas python starts indexing from 0 so we need to subtract 1.
     struct = generate_pymatgen_from_mdanal(traj, reference_frame)
 
     # step 3: generate all the neccesary OPTIMADE fields from the data
@@ -115,7 +118,7 @@ def load_trajectory_data(
     if latt is None:
         lattice_vectors = None
     else:
-        lattice_vectors = pymatgen.core.Lattice.from_dict().matrix.tolist()
+        lattice_vectors = pymatgen.core.Lattice.from_dict(latt).matrix.tolist()
 
     # cartesian_site_positions
     cartesian_site_positions = traj.trajectory[reference_frame].positions.tolist()
@@ -191,7 +194,7 @@ def load_trajectory_data(
     entry = {
         "reference_structure": reference_structure,
         "nframes": n_frames,
-        "reference_frame": reference_frame-first_frame,
+        "reference_frame": reference_frame-first_frame + 1,
         "available_properties": {},
         "type": entry_type,
         "last_modified": last_modified(),
@@ -201,7 +204,7 @@ def load_trajectory_data(
     nested_dict_update(entry, gen_traj_prop("species", "constant", values=[species]))
     nested_dict_update(entry, gen_traj_prop("dimension_types", "constant", values=[dimension_types]))
     nested_dict_update(entry, gen_traj_prop("species_at_sites", "constant", values=[species_at_sites]))
-    nested_dict_update(entry, gen_traj_prop("cartesian_site_positions", "explicit", storage_location="file", nvalues=n_frames))
+    nested_dict_update(entry, gen_traj_prop("cartesian_site_positions", "explicit", storage_method="hdf5", nvalues=n_frames))
 
     if time_present:  # if the time step is not zero or none
         nested_dict_update(entry, gen_traj_prop("time", "linear", offset_linear=traj.trajectory[0].time, step_size_linear=dt))
@@ -270,14 +273,14 @@ def load_trajectory_data(
 
 def gen_traj_prop(property_name: str, frame_serialization_format: str, values: List = None, frames: List = None,
                   offset_sparse: int = 0, step_size_sparse: int = 1, offset_linear: float = 0,
-                  step_size_linear: float = None, storage_location: str = "mongo", nvalues: int = None):
+                  step_size_linear: float = None, storage_method: str = "mongo", nvalues: int = None):
     to_add_to_dict = {"available_properties": {property_name: {"frame_serialization_format": frame_serialization_format}},
-                      property_name: {"frame_serialization_format": frame_serialization_format, "_storage_location": storage_location}}
+                      property_name: {"frame_serialization_format": frame_serialization_format, "_storage_method": storage_method}}
 
     if frame_serialization_format == "linear":
         return nested_dict_update(to_add_to_dict, {property_name: {"offset_linear": offset_linear, "step_size_linear": step_size_linear}})
 
-    if storage_location == "mongo":
+    if storage_method == "mongo":
         nested_dict_update(to_add_to_dict, {property_name: {"values": values}})
 
     if nvalues is None:
@@ -375,16 +378,21 @@ def get_chain_indixes(seg_id_set, chain_id_to_index):
 
 def get_lattice_dict(traj, frame):
 
-    if not hasattr(traj.trajectory, "dimensions") or traj.trajectory[frame].dimensions is None:
+    if hasattr(traj.trajectory[frame], "dimensions") and traj.trajectory[frame].dimensions is not None:
+        boxdim = traj.trajectory[frame].dimensions[:3]
+        angles = traj.trajectory[frame].dimensions[3:]
+    elif hasattr(traj, "dimensions") and traj.dimensions is not None:
+        boxdim = traj.dimensions[:3]
+        angles = traj.dimensions[3:]
+    else:
         return None
-    boxdim = traj.trajectory[frame].dimensions[:3]
     lattice = {
             "a": boxdim[0],
             "b": boxdim[1],
             "c": boxdim[2],
-            "alpha": traj.trajectory[frame].dimensions[3],
-            "beta": traj.trajectory[frame].dimensions[4],
-            "gamma": traj.trajectory[frame].dimensions[5],
+            "alpha": angles[0],
+            "beta": angles[1],
+            "gamma": angles[2],
         }
     return lattice
 
@@ -415,21 +423,17 @@ def generate_pymatgen_from_mdanal(traj, frame):
         boxdim = traj.trajectory[frame].dimensions[:3]
 
     # lattice_dict["charge"] = TODO MDTRAJ does not read charges from pdb files yet so we cannot implement this yet.
-    sites = []
+
 
     single_frame = len(traj.trajectory) == 1
     # Somehow reading a structure as a trajectory is very slow so instead we read the positions from the atoms.
 
     if (single_frame):
-        for i in range(nsites):
-            site = {
-                "species": [
-                    {"element": traj.atoms.elements[i], "occu": getoccu(traj, i)}
-                ],
-                "abc": traj.atoms.positions[i] / boxdim[:3],
-            }
-            sites.append(site)
+        if len(traj.trajectory) == 1:
+            sites = [{"species": [{"element": traj.atoms.elements[i], "occu": getoccu(traj, i)}],
+                "abc": traj.atoms.positions[i] / boxdim[:3]} for i in range(nsites)]
     else:
+        sites = []
         for i in range(nsites):
             site = {
                 "species": [
