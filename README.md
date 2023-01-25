@@ -1,12 +1,16 @@
 # Export_traj_to_mongo
 
+This python script is used for extracting the OPTIMADE fields from trajectories and to store them in an MongoDB database that is complient with the optimade python tools.
+At the moment this script is still under development and there is no guarantee that it works.
+The cartesian_site_positions, i.e. the particle positions are stored in a hdf5 file because that field would be too large to store in a mongo DB document.  
+The OPTIMADE standard can be found at [https://www.optimade.org](https://www.optimade.org)
+The proposed changes to the OPTIMADE standard matching this version of the script can be found on: [https://github.com/JPBergsma/OPTIMADE/tree/Trajectory_proposal_v0.1](https://github.com/JPBergsma/OPTIMADE/tree/Trajectory_proposal_v0.1)
+The version of the optimade python tools that matches this version of the proposal can be found here: [https://github.com/JPBergsma/optimade-python-tools/tree/optimade_python_tools_trajectory_0.1](https://github.com/JPBergsma/optimade-python-tools/tree/optimade_python_tools_trajectory_0.1)
 
-This python script is used for extracting the OPTIMADE fields from Molecular dynamics trajectories and store them in an OPTIMADE database that is complient with the optimade python tools.
-At the moment this script is still under devellopment and there is no guarantee that it works.
-The cartesian_site_positions, i.e. the particle positions are stored in a hdf5 file because that field would be to large to store in a mongo DB document.  
-The OPTIMADE standard can be found at https://www.optimade.org/
-The proposed modification of the standard to support trajectory data can be found here: https://github.com/Materials-Consortia/OPTIMADE/pull/377
-The optimade python tools that are in devellopment in parrallel can be found here: https://github.com/Materials-Consortia/optimade-python-tools/pull/1065
+The discussion on the modification of the standard to support trajectory data can be found here: [https://github.com/Materials-Consortia/OPTIMADE/pull/377](https://github.com/Materials-Consortia/OPTIMADE/pull/377)
+The latest version of the proposal can ber found here: [https://github.com/JPBergsma/OPTIMADE/tree/JPBergsma_add_Trajectories](https://github.com/JPBergsma/OPTIMADE/tree/JPBergsma_add_Trajectories)
+The optimade python tools that are in development in parallel can be found here: https://github.com/JPBergsma/optimade-python-tools/tree/JPBergsma_add_trajectory
+A more stable version of the 
 This devellopment version of the optimade python tools should be installed with the develloper instructions as found under https://www.optimade.org/optimade-python-tools/latest/INSTALL/
 Untill this branch has been merged with the main branch of the optimade python tools you will manulay neeed to install the optimade python tools from this branch.
 This package will store the data in the mongoDB trajectories_collection which is defined in the config file of the optimade python tools. 
