@@ -19,16 +19,17 @@ from optimade.server.mappers import TrajectoryMapper, ReferenceMapper
 
 
 def load_trajectory_data(
-        structure_file: Union[Path, StringIO],
-        trajectory_files: List[Path] = None,
+        structure_file: Union[str, Path, StringIO],
+        trajectory_files: List[Union[Path, str]] = None,
         references: List[dict] = None,
         first_frame: int = 0,
         last_frame: int = None,
-        storage_dir: Path = None,
         frame_step: int = 1,
+        storage_dir: Path = None,
         traj_id: str = None,
-        reference_frame: int = 1,
-        file_format: str =None,
+        reference_frame: int = None,
+        file_format: str = None,
+        custom_fields: dict = {}
     ):
     """This function loads a trajectory file with MDAnalysis library and Extracts the OPTIMADE fields and stores it in mongoDB.
 
@@ -37,15 +38,17 @@ def load_trajectory_data(
                                It is also possible to add a stringIO object. In that case the file type should be specified with file_format.
                trajectory_files: a list of files containing the trajectory.
                references: A list of dictionaries containing references belonging to this trajectory.
-                           Valid fields are all the fields defined by the bibtech standard.
+                           Valid fields are all the fields defined by the BibTeX standard.
                            Each referene should have an id field(string) that is unique within the database.
-               (warning: The slicing parameter first_frame, frame_step and last_frame have not tested this slicing properly yet.)
+               (warning: The slicing parameters first_frame, frame_step and last_frame have not tested this slicing properly yet.)
                first_frame: In case only a part of the trajectory should be used this indicates the first frame that should be stored in the data base.
-               frame_step: Only 1 out of every frame step will be stored on the server.
+               frame_step: Only 1 out of every frame_step frames will be stored on the server.
                last_frame: The last frame which should be stored in the database.
+               storage_dir: The location at which the HDF5 files containing the particle positions should be stored.
                traj_id : An id for this trajectory that is unique within the database. If no id is provided the id from mongo DB will be used.
                reference_frame: This indicates which frame will be used to generate the reference structure.
                file_format: the filetype of the inputstream as defined by the MDAnalysis package. example "PDB"
+               custom_fields: A dictionary with fields that should be added to the entry.
     """
 
     # TODO test whether frame step parameters are handled correctly.
@@ -53,19 +56,20 @@ def load_trajectory_data(
     # TODO It is probably better to use paths from the Path library instead of strings for the filenames
     # TODO Determine whether the file is small enough to store in memory in that case set "in_memory=True"
     if trajectory_files:
-        traj = mda.Universe(structure_file, trajectory_files)
+        traj = mda.Universe(structure_file, [str(file) for file in trajectory_files])
     else:
         traj = mda.Universe(structure_file, format=file_format)
 
-    # Step2 generate pymatgen structure from MDAnalysis structure so we can also use the methods of pymatgen
-    reference_frame = reference_frame + first_frame - 1  # Optimade starts indexing from 1 whereas python starts indexing from 0 so we need to subtract 1.
+    # Step2 generate pymatgen structure from MDAnalysis structure, so we can also use the methods of pymatgen.
+    if not last_frame:
+        last_frame = len(traj.trajectory)
+    if not reference_frame:
+        reference_frame = last_frame-1
     struct = generate_pymatgen_from_mdanal(traj, reference_frame)
 
     # step 3: generate all the neccesary OPTIMADE fields from the data
     # TODO add automatically reading the units from the data if present
 
-    if not last_frame:
-        last_frame = len(traj.trajectory)
     n_frames = 1 + (((last_frame - 1) - first_frame) // frame_step)
 
     # TODO it would be nice to also allow adding structures in the same way we add trajectories
@@ -139,9 +143,8 @@ def load_trajectory_data(
         specie_dict = {
                 "name": specie,
                 "concentration": [getoccu(traj, index)],
-
             }
-        if hasattr(traj.atoms,"elements"):
+        if hasattr(traj.atoms, "elements"):
             specie_dict["chemical_symbols"] = [traj.atoms.elements[index]]
             specie_dict["mass"]: [traj.atoms.masses[index]]
         else:
@@ -163,7 +166,7 @@ def load_trajectory_data(
             break
 
     # MDAnalysis throws a warning when the timestep is not specified but does return a reasonable value of 1.0 ps. This can be confusing, so I therefore choose to catch this warning.
-    # We do not want this warning to be displayed to the user so we temporarely allow only errors to be reported.
+    # We do not want this warning to be displayed to the user, so we temporarily allow only errors to be reported.
     warnings.filterwarnings("error")
     try:
         dt = traj.trajectory[0].dt * frame_step
@@ -171,8 +174,6 @@ def load_trajectory_data(
     except UserWarning:
         time_present = False
     warnings.filterwarnings("default")
-
-    # TODO find examples of trajectories where the number of coordinates sets and the number of frames does not match.
 
     reference_structure = {
         "elements": elements,
@@ -190,11 +191,15 @@ def load_trajectory_data(
         "species": species,
         "structure_features": structure_features,
     }
+    reference_frame_opt = 1+(reference_frame-first_frame)/frame_step # +1 because optimade starts counting from 1 while python starts from 0
+    reference_frame_opt_int = int(reference_frame_opt)
+    if reference_frame_opt != reference_frame_opt_int:
+        reference_frame_opt_int = None
 
     entry = {
         "reference_structure": reference_structure,
         "nframes": n_frames,
-        "reference_frame": reference_frame-first_frame + 1,
+        "reference_frame": reference_frame_opt_int,
         "available_properties": {},
         "type": entry_type,
         "last_modified": last_modified(),
@@ -222,6 +227,9 @@ def load_trajectory_data(
         nested_dict_update(entry, gen_traj_prop("residues", "constant", values=[residues]))
         nested_dict_update(entry, gen_traj_prop("chains", "constant", values=[chains]))
 
+    # Add custom database fields.
+    entry = {**entry, **custom_fields}
+
     # Step 4: store trajectory data
 
     trajectories_coll = create_collection(
@@ -229,32 +237,41 @@ def load_trajectory_data(
         resource_cls=TrajectoryResource,
         resource_mapper=TrajectoryMapper,
     )
+    if traj_id:
+        if trajectories_coll.findOne({"id": traj_id}):
+            raise ValueError(f"The id {traj_id} is already in the data base. No two entries can have the same id value.")
+
     mongoid = trajectories_coll.insert([entry]).inserted_ids[0]
+
     if not traj_id:
         traj_id = str(mongoid)
     fields_to_add = {"id": traj_id}
 
     if entry_type == "trajectories":
         # Write trajectory data in HDF5 format
-        # If the trajectory is larger than about 16 kb store it in hdf5 file TODO: set this value in a config file
-        if n_frames * nsites * 3 * 4 > 16 * 1024:
-            hdf5path = storage_dir/(traj_id+".hdf5")
-            fields_to_add["_hdf5file_path"] = str(hdf5path)
+        # If the trajectory is larger than about 32 kb store it in hdf5 file TODO: set this value in a config file
+        if n_frames * nsites * 3 * 4 > 32 * 1024:
+            hdf5path = Path(storage_dir)/(traj_id+".hdf5")
+            fields_to_add["_storage_path"] = str(hdf5path)
 
-            # TODO It would be better to use a try and except around storing the data. If writing the data to the hdf5 file failes the corresponding entry should be removed from the mongo DB.
-            with h5py.File(hdf5path, "w") as hdf5file:
-                # TODO It would be nice as we could store all the trajectory data in the HDF5 file So we should still add the storing of the other relevant trajectory info here as well.
+            # TODO Test this error handling.
+            try:
+                with h5py.File(hdf5path, "w") as hdf5file:
+                    # TODO It would be nice as we could store all the trajectory data in the HDF5 file. So we should still add the storing of the other relevant trajectory info here as well.
 
-                # TODO check whether there are more properties that can be stored such as force and velocities
-                if traj.trajectory[reference_frame].has_positions:
-                    arr = hdf5file.create_dataset(
-                        "cartesian_site_positions/values",
-                        (n_frames, nsites, 3),
-                        chunks=True,
-                        dtype=traj.trajectory[0].positions[0][0].dtype,
-                    )  # TODO allow for varying number of particles
-                    for i in range(first_frame, last_frame, frame_step):
-                        arr[(i - first_frame) // frame_step] = traj.trajectory[i].positions
+                    # TODO check whether there are more properties that can be stored such as force and velocities
+                    if traj.trajectory[reference_frame].has_positions:
+                        arr = hdf5file.create_dataset(
+                            "cartesian_site_positions/values",
+                            (n_frames, nsites, 3),
+                            chunks=True,
+                            dtype=traj.trajectory[0].positions[0][0].dtype,
+                        )  # TODO allow for varying number of particles
+                        for i in range(first_frame, last_frame, frame_step):
+                            arr[(i - first_frame) // frame_step] = traj.trajectory[i].positions
+            except Exception as error:
+                trajectories_coll.collection.delete_one({"_id": mongoid})
+                raise Exception(f"Unable to store trajectory data in hdf5 file in folder {storage_dir}. Entry of the {structure_file} and {trajectory_files} into the Database has been aborted.\n" + error)
 
         else:  # If the trajectory is small it can be stored locally
             positions = []
@@ -264,7 +281,7 @@ def load_trajectory_data(
                 positions.append(traj.trajectory[i].positions.tolist())
             fields_to_add.update(
                 {
-                    "cartesian_site_positions._storage_location": "mongo",
+                    "cartesian_site_positions._storage_method": "mongo",
                     "cartesian_site_positions.values": positions,
                 }
             )
@@ -338,11 +355,14 @@ def generate_relationships(references):
     )
     list_references = []
     for reference in references:
+
         list_references.append({"type": "references", "id": reference["id"]})
         reference["last_modified"] = last_modified()
-        references_coll.insert(
-            [reference]
-        )  # TODO check whether id is unique if it is already in the data base it would need a postfix if not identical.
+        ref_in_db = references_coll.collection.find_one({"id": reference["id"]})
+        if not ref_in_db:
+            references_coll.insert(
+                [reference]
+        )  # TODO check whether if it is already in the data base and if so the meta fields are the same.
 
     return {"references": {"data": list_references}}
 

@@ -99,3 +99,5 @@ It takes as arguments:
 
 An example on how it can be used is given in Demo_Loading_Trajectories_In_MongDB.py in the Demo folder.
 
+The program uses the MDAnalysis package to read the trajectory files. 
+The file types that it supports can be found here:
