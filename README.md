@@ -4,8 +4,9 @@
 
 This python script is used for extracting the OPTIMADE fields from Molecular dynamics or Monte Carlo trajectories and to store them in an MongoDB database that is compatible with the optimade python tools.
 At the moment this script is still under development and there is no guarantee that it works.
-Currently only the cartesion site positions are stored as an indexable field. The other properties are stored as a constant field. 
-The cartesian_site_positions, i.e. the particle positions are stored in a hdf5 file because that field would be too large to store in a mongo DB document.  
+Currently, only the cartesion_site_positions are stored as an indexable field. 
+The other properties are stored as a constant field.
+The cartesian_site_positions, i.e. the particle positions are stored in an hdf5 file because that field would be too large to store in a mongo DB document.  
 I do hope to add support for gridFS in the future.
 
 The OPTIMADE standard can be found at [https://www.optimade.org](https://www.optimade.org)
@@ -34,7 +35,7 @@ The default location for this configuration file is: `~/.optimade.json`
 For more information about the configuration file and how to specify a different location, see the [configuration.md](https://github.com/JPBergsma/optimade-python-tools/blob/optimade_python_tools_trajectory_0.1/docs/configuration.md) file. 
 
 To load a trajectory into the mongoDB collection you use the load_trajectory_data function.
-The indexing for the first_frame, last_frame and reference_frame arguments is zero based. i.e. the first frame is frame 0.
+The indexing for the first_frame, last_frame and reference_frame arguments is zero based. i.e. the first frame is frame 0. (Indexing in OPTIMADE is in contrast 1 based.)
 It takes as arguments:
 * structure_file: 
   * Description: A string or Path containing the location of the file with structural information about the compounds in the trajectory.
@@ -100,4 +101,4 @@ It takes as arguments:
 An example on how it can be used is given in Demo_Loading_Trajectories_In_MongDB.py in the Demo folder.
 
 The program uses the MDAnalysis package to read the trajectory files. 
-The file types that it supports can be found here:
+The file types that it supports can be found here: [https://userguide.mdanalysis.org/stable/formats/index.html](https://userguide.mdanalysis.org/stable/formats/index.html)
