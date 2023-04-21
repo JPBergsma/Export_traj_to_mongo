@@ -242,7 +242,7 @@ def load_trajectory_data(
             raise ValueError(f"The id {traj_id} is already in the data base. No two entries can have the same id value.")
 
     mongoid = trajectories_coll.insert([entry]).inserted_ids[0]
-
+    # todo: add more try except clauses below so we cannot end up with an incomplete entry in the database
     if not traj_id:
         traj_id = str(mongoid)
     fields_to_add = {"id": traj_id}
@@ -251,7 +251,7 @@ def load_trajectory_data(
         # Write trajectory data in HDF5 format
         # If the trajectory is larger than about 32 kb store it in hdf5 file TODO: set this value in a config file
         if n_frames * nsites * 3 * 4 > 32 * 1024:
-            hdf5path = Path(storage_dir)/(traj_id+".hdf5")
+            hdf5path = Path.absolute(Path(storage_dir))/(traj_id+".hdf5")
             fields_to_add["_storage_path"] = str(hdf5path)
 
             # TODO Test this error handling.
@@ -267,7 +267,7 @@ def load_trajectory_data(
                             chunks=True,
                             dtype=traj.trajectory[0].positions[0][0].dtype,
                         )  # TODO allow for varying number of particles
-                        for i in range(first_frame, last_frame, frame_step):
+                        for i in range(first_frame, last_frame, frame_step): # todo check wether this step can be done without for loop, so it is faster.
                             arr[(i - first_frame) // frame_step] = traj.trajectory[i].positions
             except Exception as error:
                 trajectories_coll.collection.delete_one({"_id": mongoid})

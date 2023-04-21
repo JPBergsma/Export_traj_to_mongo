@@ -35,7 +35,7 @@ The default location for this configuration file is: `~/.optimade.json`
 For more information about the configuration file and how to specify a different location, see the [configuration.md](https://github.com/JPBergsma/optimade-python-tools/blob/optimade_python_tools_trajectory_0.1/docs/configuration.md) file. 
 
 To load a trajectory into the mongoDB collection you use the load_trajectory_data function.
-The indexing for the first_frame, last_frame and reference_frame arguments is zero based. i.e. the first frame is frame 0. (Indexing in OPTIMADE is in contrast 1 based.)
+The indexing for the first_frame, last_frame and reference_frame arguments is zero based. i.e. the first frame is frame 0. (Indexing in the OPTIMADE API is in contrast 1 based.)
 It takes as arguments:
 * structure_file: 
   * Description: A string or Path containing the location of the file with structural information about the compounds in the trajectory.
@@ -100,5 +100,5 @@ It takes as arguments:
 
 An example on how it can be used is given in Demo_Loading_Trajectories_In_MongDB.py in the Demo folder.
 
-The program uses the MDAnalysis package to read the trajectory files. 
+The program uses the [MDAnalysis](https://www.mdanalysis.org/) package to read the trajectory files. 
 The file types that it supports can be found here: [https://userguide.mdanalysis.org/stable/formats/index.html](https://userguide.mdanalysis.org/stable/formats/index.html)
