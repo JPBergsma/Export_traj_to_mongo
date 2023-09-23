@@ -1,6 +1,5 @@
-#optimade > 0.18.0 # the current optimade release does not yet support trajectories so it has to installed from the branch
+#optimade > 0.25.0 # the current optimade release does not yet support trajectories so it has to installed from the branch
 numpy
 pymongo
 MDAnalysis
 pymatgen
-h5py
