@@ -2,19 +2,16 @@
 
 #### Introduction
 
-This python script is used for extracting the OPTIMADE fields from Molecular dynamics or Monte Carlo trajectories and to store them in an MongoDB database that is compatible with the optimade python tools.
+This python module is used for extracting the OPTIMADE fields from Molecular dynamics or Monte Carlo trajectories and to store them in an MongoDB database that is compatible with the optimade python tools.
 At the moment this script is still under development and there is no guarantee that it works.
 Currently, only the cartesion_site_positions are stored as an indexable field. 
-The other properties are stored as a constant field.
-The cartesian_site_positions, i.e. the particle positions are stored in an hdf5 file because that field would be too large to store in a mongo DB document.  
-I do hope to add support for gridFS in the future.
+The other properties are returned by default at the trajectory endpoint.
+The cartesian_site_positions, i.e. the particle positions are stored in gridfs.
 
 The OPTIMADE standard can be found at [https://www.optimade.org](https://www.optimade.org)
-The proposed changes to the OPTIMADE standard matching this version of the script can be found on: [https://github.com/JPBergsma/OPTIMADE/tree/Trajectory_proposal_v0.1](https://github.com/JPBergsma/OPTIMADE/tree/Trajectory_proposal_v0.1)
-The version of the optimade python tools that matches this version of the proposal can be found here: [https://github.com/JPBergsma/optimade-python-tools/tree/optimade_python_tools_trajectory_0.1](https://github.com/JPBergsma/optimade-python-tools/tree/optimade_python_tools_trajectory_0.1)
+The proposed changes to the OPTIMADE standard matching this version of the script can be found on: [https://github.com/JPBergsma/OPTIMADE/tree/JPBergsma_add_Trajectories](https://github.com/JPBergsma/OPTIMADE/tree/JPBergsma_add_Trajectories)
+The version of the optimade python tools that matches this version of the proposal can be found here: [https://github.com/JPBergsma/optimade-python-tools/tree/JPBergsma/trajectory_endpoint](https://github.com/JPBergsma/optimade-python-tools/tree/JPBergsma/trajectory_endpoint)
 The discussion on the modification of the standard to support trajectory data can be found here: [https://github.com/Materials-Consortia/OPTIMADE/pull/377](https://github.com/Materials-Consortia/OPTIMADE/pull/377)
-The latest version of the proposal can be found here: [https://github.com/JPBergsma/OPTIMADE/tree/JPBergsma_add_Trajectories](https://github.com/JPBergsma/OPTIMADE/tree/JPBergsma_add_Trajectories)
-The latest development version of the optimade python tools that are in development in parallel can be found here: https://github.com/JPBergsma/optimade-python-tools/tree/JPBergsma_add_trajectory
 
 
 #### installation
@@ -25,7 +22,7 @@ This script can be cloned with:
 
 or installed as a library with:
 
-`pip install git+https://github.com/JPBergsma/Export_traj_to_mongo@master`
+`pip install git+https://github.com/JPBergsma/Export_traj_to_mongo@optimade1.2`
 
 #### Usage
 
@@ -62,7 +59,7 @@ It takes as arguments:
   * Default: 0
 
 * frame_step: 
-  * Description: Only 1 out of every frame_step frames will be shared.  
+  * Description: Only 1 out of every frame_step frames will be stored.  
   * Type: Integer
   * Optional: True
   * Default: 1
@@ -74,14 +71,9 @@ It takes as arguments:
   * Optional: True
   * Default: The number of frames in the trajectory.
 
-* storage_dir
-  * Description: The location at which the HDF5 files containing the particle positions should be stored.
-  * Type: Path or string
-  * Optional: False
-
 * traj_id:
   * Description: An id for this trajectory that is unique within the database. 
-    If no id is provided the id from mongo DB will be used. 
+    If no id is provided the automatically generated id from mongo DB will be used. 
   * Type: string
   * Optional: True
   * Default: The mongo DB ID

@@ -33,7 +33,7 @@ setup(
         "numpy>=1.23",
         "pymatgen>=2022.7",
         "fastapi>=0.103.0",  # Todo figure out whether this should not be installed already with the installation of the optimade python tools.
-        "jsonlines>=3.1.0",
+        "jsonlines>=3.1.0",  # Todo figure out whether this should not be installed already with the installation of the optimade python tools.
         "optimade@git+https://github.com/JPBergsma/optimade-python-tools.git@JPBergsma/trajectory_endpoint"
     ]
 )
