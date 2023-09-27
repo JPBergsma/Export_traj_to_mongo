@@ -7,6 +7,7 @@ import MDAnalysis as mda
 import pymatgen.core
 from pathlib import Path
 from io import StringIO
+import math
 
 #sys.path.append("/home/kwibus/PycharmProjects/Optimade/optimade-python-tools/")
 from optimade.server.config import CONFIG
@@ -25,7 +26,7 @@ def load_trajectory_data(
         last_frame: int = None,
         frame_step: int = 1,
         traj_id: str = None,
-        reference_frames: Union[list[int], int] = None,
+        reference_frames: Union[List[int], int] = None,
         file_format: str = None,
         custom_fields: dict = {}
     ):
@@ -250,10 +251,11 @@ def load_trajectory_data(
             # TODO check whether there are more properties that can be stored such as force and velocities
             frames_to_be_stored = slice(first_frame, last_frame, frame_step)
             arr = np.array([np.array(frame.positions) for frame in traj.trajectory[frames_to_be_stored]])
+            slice_object = [{"start": first_frame+1, "stop": last_frame, "step": frame_step}] + [{"start": 1, "stop": arr.shape[i], "step": 1} for i in range(1, len(arr.shape))]
             from optimade.server.routers.partial_data import partial_data_coll
             filename = str(traj_id) + ":" + property_name + ".npy"
             metadata = {"dtype": {"itemsize": arr.dtype.itemsize, "name": arr.dtype.name},   # todo perhaps it is good to create a class for the metadata of a file stroed in gridfs
-                        "slice_obj": [{"start": first_frame+1, "stop": last_frame, "step": frame_step}] + [{"start": 1, "stop": arr.shape[i], "step": 1} for i in range(1, len(arr.shape))],
+                        "slice_obj": slice_object,
                         "endpoint": "trajectories",
                         "parent_id": traj_id,
                         "property_name": property_name,
@@ -273,7 +275,23 @@ def load_trajectory_data(
             for i in range(first_frame, last_frame, frame_step):
                 positions.append(traj.trajectory[i].positions.tolist())
             fields_to_add["cartesian_site_positions"] = positions
+        # Add per property meta data so client can use property_ranges query parameter
 
+        range_meta = {"meta":
+                          {"property_metadata":
+                               {property_name:
+                                    {"range":
+                                         {"layout": "dense",
+                                          "indexable_dim": ["dim_frames", "dim_sites", "dim_cartesian_dimensions"],
+                                          "data_range": slice_object,
+                                          "nvalues": math.ceil((last_frame-first_frame)/frame_step)*nsites*3
+                                         }
+                                     }
+                                }
+                           }
+                      }
+
+        nested_dict_update(fields_to_add, range_meta)
         trajectories_coll.collection.update_one({"_id": entry["_id"]}, {"$set": fields_to_add})
     except Exception as error:
         trajectories_coll.collection.delete_one({"_id": entry["_id"]})
