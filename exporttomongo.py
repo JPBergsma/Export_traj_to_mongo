@@ -267,7 +267,7 @@ def load_trajectory_data(
             output_file.seek(0)
             partial_data_coll.insert(output_file, filename=filename, metadata=metadata)
             output_file.close()
-            partialdatafield = {"meta": {"partial_data_links": {property_name: None}}, property_name: []}
+            partialdatafield = {"meta": {"partial_data_links": {property_name: None}}}
             nested_dict_update(fields_to_add, partialdatafield)
         else:  # If the trajectory is small it can be stored locally
             positions = []

@@ -31,7 +31,7 @@ setup(
         "pymongo>=3.12.1",
         "MDAnalysis>=2.2.0",
         "numpy>=1.23",
-        "pymatgen>=2022.7",
+        "pymatgen>=2022.7, <= 2023.9.10",
         "fastapi>=0.103.0",  # Todo figure out whether this should not be installed already with the installation of the optimade python tools.
         "jsonlines>=3.1.0",  # Todo figure out whether this should not be installed already with the installation of the optimade python tools.
         "optimade@git+https://github.com/JPBergsma/optimade-python-tools.git@JPBergsma/trajectory_endpoint"

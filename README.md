@@ -29,7 +29,7 @@ or installed as a library with:
 This package will store the metadata of the trajectory in a mongoDB collection.
 The name of this collection is read from the `"trajectories_collection"` field in the configuration file of the optimade-python-tools, i.e. `.optimade.json`
 The default location for this configuration file is: `~/.optimade.json`
-For more information about the configuration file and how to specify a different location, see the [configuration.md](https://github.com/JPBergsma/optimade-python-tools/blob/optimade_python_tools_trajectory_0.1/docs/configuration.md) file. 
+For more information about the configuration file and how to specify a different location, see the [configuration.md](https://github.com/JPBergsma/optimade-python-tools/blob/JPBergsma/trajectory_endpoint/docs/configuration.md) file. 
 
 To load a trajectory into the mongoDB collection you use the load_trajectory_data function.
 The indexing for the first_frame, last_frame and reference_frame arguments is zero based. i.e. the first frame is frame 0. (Indexing in the OPTIMADE API is in contrast 1 based.)
