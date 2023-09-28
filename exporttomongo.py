@@ -251,7 +251,7 @@ def load_trajectory_data(
             # TODO check whether there are more properties that can be stored such as force and velocities
             frames_to_be_stored = slice(first_frame, last_frame, frame_step)
             arr = np.array([np.array(frame.positions) for frame in traj.trajectory[frames_to_be_stored]])
-            slice_object = [{"start": first_frame+1, "stop": last_frame, "step": frame_step}] + [{"start": 1, "stop": arr.shape[i], "step": 1} for i in range(1, len(arr.shape))]
+            slice_object = [{"start": 1, "stop": last_frame-first_frame, "step": frame_step}] + [{"start": 1, "stop": arr.shape[i], "step": 1} for i in range(1, len(arr.shape))]
             from optimade.server.routers.partial_data import partial_data_coll
             filename = str(traj_id) + ":" + property_name + ".npy"
             metadata = {"dtype": {"itemsize": arr.dtype.itemsize, "name": arr.dtype.name},   # todo perhaps it is good to create a class for the metadata of a file stroed in gridfs
