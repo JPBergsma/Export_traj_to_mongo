@@ -207,7 +207,7 @@ def load_trajectory_data(
 
     if time_present:  # if the time step is not zero or none
         entry["time_step"] = dt
-        entry["time_0"] = traj.trajectory[0].time
+        #entry["time_0"] = traj.trajectory[0].time # It is a bit suspicious that the time at the first frame is not 0.
 
     # step 3.5 add references
     if references:
