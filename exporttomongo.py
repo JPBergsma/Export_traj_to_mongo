@@ -283,7 +283,7 @@ def load_trajectory_data(
                                     {"range":
                                          {"layout": "dense",
                                           "indexable_dim": ["dim_frames", "dim_sites", "dim_cartesian_dimensions"],
-                                          "data_range": slice_object,
+                                          "data_range":  [{"start": 1, "stop": last_frame-first_frame, "step": frame_step}] + [{"start": 1, "stop": arr.shape[i], "step": 1} for i in range(1, len(arr.shape))],
                                           "nvalues": math.ceil((last_frame-first_frame)/frame_step)*nsites*3
                                          }
                                      }
